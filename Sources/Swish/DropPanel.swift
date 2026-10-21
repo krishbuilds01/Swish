@@ -73,30 +73,29 @@ public final class WheelDropView: NSView {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.state.activeConvertingFormat = format
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.74)) {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.75)) {
                 self.state.phase = .converting
             }
 
             Task {
+                let startTime = Date()
                 do {
                     let results = try await ConversionEngine.shared.convert(files: filesToConvert, to: format)
+
+                    // Ensure minimum conversion display time of 400ms for visual smoothness
+                    let elapsed = Date().timeIntervalSince(startTime)
+                    if elapsed < 0.40 {
+                        let remaining = UInt64((0.40 - elapsed) * 1_000_000_000)
+                        try? await Task.sleep(nanoseconds: remaining)
+                    }
+
                     await MainActor.run {
-                        // Green ripple shockwave expansion
-                        self.state.rippleScale = 0.40
-                        self.state.rippleOpacity = 0.95
-                        self.state.secondRippleScale = 0.25
-                        self.state.secondRippleOpacity = 0.75
-
-                        withAnimation(.easeOut(duration: 0.65)) {
-                            self.state.phase = .success
-                            self.state.rippleScale = 1.35
-                            self.state.rippleOpacity = 0.0
-                            self.state.secondRippleScale = 1.15
-                            self.state.secondRippleOpacity = 0.0
-                        }
-
                         // Success tactile haptic!
                         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+
+                        withAnimation(.spring(response: 0.40, dampingFraction: 0.65)) {
+                            self.state.phase = .success
+                        }
 
                         if results.count == 1 && filesToConvert.count > 1 {
                             NotificationHelper.shared.notifyBatchSuccess(filesCount: filesToConvert.count, destination: results[0], format: format)
@@ -109,8 +108,8 @@ public final class WheelDropView: NSView {
                         }
                     }
 
-                    // 0.90s delay to enjoy the green tick animation
-                    try await Task.sleep(nanoseconds: 900_000_000)
+                    // Hold success screen for 1.1s so user clearly sees the beautiful Done card
+                    try await Task.sleep(nanoseconds: 1_100_000_000)
                     await MainActor.run {
                         DropPanelController.shared.hide()
                     }
@@ -133,11 +132,13 @@ public final class WheelDropView: NSView {
 
     private func updateFilesFromPasteboard(_ pb: NSPasteboard) {
         if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            let existingFiles = urls.filter { $0.isFileURL && FileManager.default.fileExists(atPath: $0.path) }
+            guard !existingFiles.isEmpty else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
-                if self.state.fileURLs != urls {
-                    self.state.fileURLs = urls
-                    let formats = ConversionEngine.shared.compatibleFormats(for: urls[0])
+                if self.state.fileURLs != existingFiles {
+                    self.state.fileURLs = existingFiles
+                    let formats = ConversionEngine.shared.compatibleFormats(for: existingFiles[0])
                     if formats.isEmpty {
                         self.state.isUnsupportedFile = true
                         self.state.unsupportedMessage = "File not supported for conversion"
@@ -259,22 +260,20 @@ public final class DropPanelController {
     public func show(at screenLocation: NSPoint, fileURLs: [URL]) {
         guard let panel = panel else { return }
 
+        // Strict guard: NEVER show panel if no valid files are being dragged
+        guard !fileURLs.isEmpty else { return }
+
         state.reset()
         state.fileURLs = fileURLs
-        if let first = fileURLs.first {
-            let formats = ConversionEngine.shared.compatibleFormats(for: first)
-            if formats.isEmpty {
-                state.isUnsupportedFile = true
-                state.unsupportedMessage = "File not supported for conversion"
-                state.availableFormats = []
-            } else {
-                state.isUnsupportedFile = false
-                state.availableFormats = formats
-            }
-        } else {
+        let first = fileURLs[0]
+        let formats = ConversionEngine.shared.compatibleFormats(for: first)
+        if formats.isEmpty {
             state.isUnsupportedFile = true
             state.unsupportedMessage = "File not supported for conversion"
             state.availableFormats = []
+        } else {
+            state.isUnsupportedFile = false
+            state.availableFormats = formats
         }
 
         // Center on cursor with screen boundary clamping
@@ -292,16 +291,20 @@ public final class DropPanelController {
 
         let origin = NSPoint(x: x, y: y)
         panel.setFrameOrigin(origin)
-        state.isPresented = true
         panel.orderFrontRegardless()
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+            state.isPresented = true
+        }
         print("[Swish] Presentation at origin: \(origin). Supported: \(!state.isUnsupportedFile). Formats: \(state.availableFormats.count)")
     }
 
     public func hide() {
         guard let panel = panel, panel.isVisible else { return }
-        state.isPresented = false
+        withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
+            state.isPresented = false
+        }
         // Allow fade out animation to finish before ordering out
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) { [weak self] in
             guard let self = self else { return }
             if !self.state.isPresented {
                 self.panel?.orderOut(nil)

@@ -57,10 +57,11 @@ public final class WheelState: ObservableObject {
     @Published public var phase: ConversionPhase = .idle
     @Published public var activeConvertingFormat: FormatOption? = nil
     @Published public var progressRotation: Double = 0.0
-    @Published public var rippleScale: CGFloat = 0.7
-    @Published public var rippleOpacity: Double = 0.0
+    @Published public var rippleScale: CGFloat = 0.85
+    @Published public var rippleOpacity: Double = 0.75
     @Published public var secondRippleScale: CGFloat = 0.5
     @Published public var secondRippleOpacity: Double = 0.0
+    @Published public var checkmarkScale: CGFloat = 0.25
 
     // Unsupported File State
     @Published public var isUnsupportedFile: Bool = false
@@ -105,11 +106,13 @@ public final class WheelState: ObservableObject {
         phase = .idle
         activeConvertingFormat = nil
         progressRotation = 0.0
-        rippleScale = 0.7
-        rippleOpacity = 0.0
+        rippleScale = 0.85
+        rippleOpacity = 0.75
         secondRippleScale = 0.5
         secondRippleOpacity = 0.0
+        checkmarkScale = 0.25
         isUnsupportedFile = false
         unsupportedMessage = "File not supported for conversion"
     }
 }
+

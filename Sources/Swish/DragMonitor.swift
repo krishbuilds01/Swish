@@ -70,9 +70,9 @@ public final class DragMonitor {
         case .leftMouseUp:
             isDraggingActive = false
             wheelAnchorPoint = nil
-            // If panel is visible, allow performDragOperation to process before hiding
+            // If panel is visible and NOT converting or showing success, allow drop to process before hiding
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                if !DropPanelController.shared.state.isConverting {
+                if !DropPanelController.shared.state.isConverting && !DropPanelController.shared.state.conversionSuccess {
                     DropPanelController.shared.hide()
                 }
             }
@@ -141,7 +141,7 @@ public final class DragMonitor {
         case .leftMouseUp:
             wheelAnchorPoint = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                if !DropPanelController.shared.state.isConverting {
+                if !DropPanelController.shared.state.isConverting && !DropPanelController.shared.state.conversionSuccess {
                     DropPanelController.shared.hide()
                 }
             }
@@ -153,29 +153,50 @@ public final class DragMonitor {
     // MARK: - Trigger / Dismiss Logic
 
     private func triggerWheelIfNeeded(at mouseLoc: NSPoint) {
-        // If already visible and converting, don't interfere
-        if DropPanelController.shared.state.isConverting { return }
+        // If already visible and converting or showing success, don't interfere
+        if DropPanelController.shared.state.isConverting || DropPanelController.shared.state.conversionSuccess { return }
 
         // If wheel is already presented, keep it anchored! (Do not move it with cursor)
         if DropPanelController.shared.isVisible { return }
 
-        // Check active drag pasteboard for files
+        // Strictly verify that actual file(s) are actively being dragged!
         let dragPB = NSPasteboard(name: .drag)
-        var fileURLs: [URL] = []
-        if let urls = dragPB.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
-            fileURLs = urls
+        let types = dragPB.types ?? []
+
+        // Reject plain text, URLs from browsers, or non-file clipboard drags
+        let hasFileTypes = types.contains(.fileURL) ||
+                           types.contains(NSPasteboard.PasteboardType("public.file-url")) ||
+                           types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType")) ||
+                           types.contains(NSPasteboard.PasteboardType("com.apple.finder.node"))
+
+        guard hasFileTypes else {
+            // Not a file drag (e.g. text selection, window drag, scrollbar drag). Never open!
+            return
         }
 
-        print("[Swish] Wheel triggered at \(mouseLoc). Found \(fileURLs.count) drag files.")
+        // Verify that valid file URLs exist
+        guard let urls = dragPB.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+              !urls.isEmpty else {
+            return
+        }
+
+        // Verify that the files actually exist on the filesystem
+        let existingFiles = urls.filter { $0.isFileURL && FileManager.default.fileExists(atPath: $0.path) }
+        guard !existingFiles.isEmpty else {
+            return
+        }
+
+        print("[Swish] Verified file drag at \(mouseLoc). Files: \(existingFiles.map { $0.lastPathComponent })")
         wheelAnchorPoint = mouseLoc
-        DropPanelController.shared.show(at: mouseLoc, fileURLs: fileURLs)
+        DropPanelController.shared.show(at: mouseLoc, fileURLs: existingFiles)
     }
 
     private func dismissWheelIfActive() {
-        if DropPanelController.shared.isVisible && !DropPanelController.shared.state.isConverting {
+        if DropPanelController.shared.isVisible && !DropPanelController.shared.state.isConverting && !DropPanelController.shared.state.conversionSuccess {
             print("[Swish] Wheel dismissed.")
             DropPanelController.shared.hide()
             wheelAnchorPoint = nil
         }
     }
 }
+

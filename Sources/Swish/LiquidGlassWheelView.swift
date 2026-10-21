@@ -202,32 +202,7 @@ public struct LiquidGlassWheelView: View {
                 unsupportedFilePillView
                     .transition(.scale(scale: 0.88).combined(with: .opacity))
             } else {
-                // MARK: 1. Green Liquid Success Shockwaves
-                if isSuccess {
-                    // Primary Outward Green Shockwave
-                    Circle()
-                        .stroke(
-                            Color(red: 0.22, green: 0.88, blue: 0.44).opacity(state.rippleOpacity),
-                            lineWidth: 3.0
-                        )
-                        .frame(
-                            width: (outerRadius * 2) * state.rippleScale,
-                            height: (outerRadius * 2) * state.rippleScale
-                        )
-
-                    // Secondary Echo Green Wave
-                    Circle()
-                        .stroke(
-                            Color(red: 0.22, green: 0.88, blue: 0.44).opacity(state.secondRippleOpacity),
-                            lineWidth: 1.8
-                        )
-                        .frame(
-                            width: (outerRadius * 2) * state.secondRippleScale,
-                            height: (outerRadius * 2) * state.secondRippleScale
-                        )
-                }
-
-                // MARK: 2. Floating Liquid Glass Petals (NO background circle!)
+                // MARK: 1. Floating Liquid Glass Petals (Smoothly collapses and fades on conversion)
                 if count > 0 {
                     // Fixed 8-option circular petal shape: exactly (2*pi / 8) - gap
                     // This shape is SHARED by all petals and NEVER changes when the number of formats changes!
@@ -246,28 +221,41 @@ public struct LiquidGlassWheelView: View {
                             isHovered: isHovered,
                             isDimmed: (isConverting || isSuccess)
                         )
+                        .scaleEffect((isConverting || isSuccess) ? 0.82 : 1.0)
+                        .opacity((isConverting || isSuccess) ? 0.0 : 1.0)
+                        .animation(.spring(response: 0.36, dampingFraction: 0.78), value: isConverting)
+                        .animation(.spring(response: 0.36, dampingFraction: 0.78), value: isSuccess)
                     }
                 }
 
-                // MARK: 3. Center Liquid Glass Pill / Green Success Tick View
+                // MARK: 2. Center Liquid Glass Hub (Idle Pill / Converting Orb / Success Orb)
                 if isSuccess {
-                    greenSuccessTickCard
-                        .transition(.scale(scale: 0.75).combined(with: .opacity))
+                    LiquidSuccessOrbView(format: activeFormat, state: state)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.85).combined(with: .opacity),
+                            removal: .scale(scale: 0.88).combined(with: .opacity)
+                        ))
                 } else if isConverting {
-                    convertingCenterOrb(format: activeFormat)
-                        .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    LiquidConvertingOrbView(format: activeFormat)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.88).combined(with: .opacity),
+                            removal: .scale(scale: 0.90).combined(with: .opacity)
+                        ))
                 } else {
                     liquidCenterPillView(format: activeFormat)
-                        .transition(.scale(scale: 0.90).combined(with: .opacity))
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.92).combined(with: .opacity),
+                            removal: .scale(scale: 0.88).combined(with: .opacity)
+                        ))
                 }
             }
         }
         .frame(width: canvasSize, height: canvasSize)
         .scaleEffect(state.isPresented ? 1.0 : 0.88)
         .opacity(state.isPresented ? 1.0 : 0.0)
-        .animation(.spring(response: 0.28, dampingFraction: 0.74), value: state.isPresented)
+        .animation(.spring(response: 0.32, dampingFraction: 0.76), value: state.isPresented)
         .animation(.spring(response: 0.18, dampingFraction: 0.70), value: state.hoveredIndex)
-        .animation(.spring(response: 0.35, dampingFraction: 0.76), value: state.phase)
+        .animation(.spring(response: 0.38, dampingFraction: 0.72), value: state.phase)
     }
 
     // MARK: - Individual Pure Liquid Glass Petal (No Popup, Just Highlight)
@@ -435,108 +423,7 @@ public struct LiquidGlassWheelView: View {
         }
     }
 
-    // MARK: - Converting Orb
-
-    @ViewBuilder
-    private func convertingCenterOrb(format: FormatOption?) -> some View {
-        ZStack {
-            // Live Hardware Glass Blur
-            VisualEffectBlur(material: .hudWindow, blendingMode: .behindWindow)
-                .clipShape(Circle())
-                .frame(width: 82, height: 82)
-
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.24), Color.white.opacity(0.06)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 82, height: 82)
-
-            Circle()
-                .stroke(Color.white.opacity(0.60), lineWidth: 1.4)
-                .frame(width: 82, height: 82)
-
-            // Spinning Liquid Comet Ring
-            Circle()
-                .trim(from: 0.0, to: 0.70)
-                .stroke(
-                    AngularGradient(
-                        colors: [
-                            Color.white.opacity(0.0),
-                            Color.white.opacity(0.45),
-                            Color.white
-                        ],
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: 3.0, lineCap: .round)
-                )
-                .frame(width: 88, height: 88)
-                .rotationEffect(Angle(degrees: state.progressRotation))
-                .onAppear {
-                    withAnimation(.linear(duration: 0.95).repeatForever(autoreverses: false)) {
-                        state.progressRotation = 360
-                    }
-                }
-
-            VStack(spacing: 2) {
-                if let fmt = format {
-                    Image(systemName: fmt.iconName)
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(.white)
-                }
-
-                Text("Converting")
-                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                    .foregroundColor(.white.opacity(0.92))
-            }
-        }
-    }
-
-    // MARK: - Green Success Tick (Exact Match to User Request)
-
-    private var greenSuccessTickCard: some View {
-        ZStack {
-            // Concentric Green Pulse Wave 1
-            Circle()
-                .stroke(Color(red: 0.20, green: 0.85, blue: 0.44).opacity(0.45), lineWidth: 2.0)
-                .frame(width: 104, height: 104)
-
-            // Concentric Green Pulse Wave 2
-            Circle()
-                .stroke(Color(red: 0.20, green: 0.85, blue: 0.44).opacity(0.75), lineWidth: 2.5)
-                .frame(width: 90, height: 90)
-
-            // Glowing Vibrant Apple-Green Circle
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.24, green: 0.90, blue: 0.50),
-                            Color(red: 0.16, green: 0.78, blue: 0.40)
-                        ],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 40
-                    )
-                )
-                .frame(width: 76, height: 76)
-                .shadow(color: Color(red: 0.20, green: 0.85, blue: 0.44).opacity(0.80), radius: 18)
-
-            // White Specular Rim
-            Circle()
-                .stroke(Color.white.opacity(0.90), lineWidth: 2.0)
-                .frame(width: 76, height: 76)
-
-            // Crisp White Checkmark Tick
-            Image(systemName: "checkmark")
-                .font(.system(size: 32, weight: .bold))
-                .foregroundColor(.white)
-                .shadow(color: Color.black.opacity(0.30), radius: 4, y: 2)
-        }
-    }
+    // MARK: - Legacy methods replaced with LiquidConvertingOrbView and LiquidSuccessOrbView below
 
     // MARK: - Unsupported File Floating Liquid Glass Pill
 
@@ -608,3 +495,222 @@ public struct LiquidGlassWheelView: View {
         }
     }
 }
+
+// MARK: - Hardware Synchronized Liquid Progress Ring (Zero Stutter, Continuous 60/120Hz)
+
+public struct LiquidProgressRing: View {
+    public init() {}
+
+    public var body: some View {
+        TimelineView(.animation) { timeline in
+            let elapsed = timeline.date.timeIntervalSinceReferenceDate
+            let angle = (elapsed.truncatingRemainder(dividingBy: 1.05) / 1.05) * 360.0
+
+            ZStack {
+                // Subtle track ring
+                Circle()
+                    .stroke(Color.white.opacity(0.12), lineWidth: 3.2)
+
+                // Glowing comet arc
+                Circle()
+                    .trim(from: 0.05, to: 0.78)
+                    .stroke(
+                        AngularGradient(
+                            gradient: Gradient(colors: [
+                                Color.white.opacity(0.0),
+                                Color.white.opacity(0.25),
+                                Color.white.opacity(0.85),
+                                Color.white
+                            ]),
+                            center: .center,
+                            startAngle: .degrees(0),
+                            endAngle: .degrees(360)
+                        ),
+                        style: StrokeStyle(lineWidth: 3.2, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(angle))
+                    .shadow(color: Color.white.opacity(0.65), radius: 6)
+            }
+        }
+    }
+}
+
+// MARK: - Premium Liquid Glass Converting Orb
+
+public struct LiquidConvertingOrbView: View {
+    public let format: FormatOption?
+
+    public init(format: FormatOption?) {
+        self.format = format
+    }
+
+    public var body: some View {
+        ZStack {
+            // Ambient Soft Shadow
+            Circle()
+                .fill(Color.black.opacity(0.32))
+                .frame(width: 96, height: 96)
+                .blur(radius: 14)
+                .offset(y: 4)
+
+            // Live Hardware Glass Blur
+            VisualEffectBlur(material: .hudWindow, blendingMode: .behindWindow)
+                .clipShape(Circle())
+                .frame(width: 96, height: 96)
+
+            // Pure Liquid Glass Core
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.24),
+                            Color.white.opacity(0.08),
+                            Color.white.opacity(0.02)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 96, height: 96)
+
+            // Specular Glass Border
+            Circle()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.85),
+                            Color.white.opacity(0.28),
+                            Color.white.opacity(0.15),
+                            Color.white.opacity(0.40)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.5
+                )
+                .frame(width: 96, height: 96)
+
+            // Silky Smooth Hardware Progress Ring
+            LiquidProgressRing()
+                .frame(width: 104, height: 104)
+
+            // Format Icon and Label
+            VStack(spacing: 3) {
+                if let fmt = format {
+                    TimelineView(.animation) { timeline in
+                        let elapsed = timeline.date.timeIntervalSinceReferenceDate
+                        let iconScale = 1.0 + 0.05 * CGFloat(sin(elapsed * 3.4))
+
+                        Image(systemName: fmt.iconName)
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(.white)
+                            .scaleEffect(iconScale)
+                            .shadow(color: Color.white.opacity(0.45), radius: 6)
+                    }
+
+                    Text(fmt.displayName)
+                        .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .shadow(color: Color.black.opacity(0.35), radius: 2)
+
+                    Text("Converting…")
+                        .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.75))
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Premium Apple Liquid Emerald Success Card
+
+public struct LiquidSuccessOrbView: View {
+    public let format: FormatOption?
+    @ObservedObject public var state: WheelState
+
+    public init(format: FormatOption?, state: WheelState) {
+        self.format = format
+        self.state = state
+    }
+
+    public var body: some View {
+        ZStack {
+            // Soft Outward Emerald Ripple Wave
+            Circle()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.22, green: 0.88, blue: 0.44).opacity(state.rippleOpacity),
+                            Color(red: 0.10, green: 0.75, blue: 0.38).opacity(0.0)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 3.0
+                )
+                .frame(width: 96 * state.rippleScale, height: 96 * state.rippleScale)
+
+            // Outer Soft Ambient Emerald Glow
+            Circle()
+                .fill(Color(red: 0.20, green: 0.85, blue: 0.44).opacity(0.40))
+                .frame(width: 96, height: 96)
+                .blur(radius: 16)
+
+            // Hardware Glass Backdrop
+            VisualEffectBlur(material: .hudWindow, blendingMode: .behindWindow)
+                .clipShape(Circle())
+                .frame(width: 96, height: 96)
+
+            // Glowing Liquid Emerald Core
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color(red: 0.26, green: 0.92, blue: 0.52).opacity(0.95),
+                            Color(red: 0.12, green: 0.76, blue: 0.38).opacity(0.96)
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 48
+                    )
+                )
+                .frame(width: 96, height: 96)
+                .shadow(color: Color(red: 0.18, green: 0.84, blue: 0.42).opacity(0.70), radius: 16, y: 3)
+
+            // Specular Rim Highlight
+            Circle()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.95),
+                            Color.white.opacity(0.40),
+                            Color.white.opacity(0.18),
+                            Color.white.opacity(0.60)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.8
+                )
+                .frame(width: 96, height: 96)
+
+            // Content: Animated Checkmark & Done Typography
+            VStack(spacing: 3) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundColor(.white)
+                    .shadow(color: Color.black.opacity(0.30), radius: 3, y: 1.5)
+                    .scaleEffect(state.checkmarkScale)
+
+                if let fmt = format {
+                    Text(fmt.displayName)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.96))
+                        .shadow(color: Color.black.opacity(0.20), radius: 2)
+                }
+            }
+        }
+    }
+}
+
+
