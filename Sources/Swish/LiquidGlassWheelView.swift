@@ -34,9 +34,9 @@ public struct VisualEffectBlur: NSViewRepresentable {
     }
 }
 
-// MARK: - Organic Curved Petal Shape (Fixed Geometry, No Popup)
+// MARK: - True Circular Liquid Glass Petal Shape (True Circular Arcs, Zero Flat Edges)
 
-public struct OrganicPetalShape: Shape {
+public struct CircularPetalShape: Shape {
     public let centerAngle: Double // radians
     public let angularSpan: Double // radians
     public let innerRadius: CGFloat
@@ -48,7 +48,7 @@ public struct OrganicPetalShape: Shape {
         angularSpan: Double,
         innerRadius: CGFloat,
         outerRadius: CGFloat,
-        cornerRadius: CGFloat = 14
+        cornerRadius: CGFloat = 11
     ) {
         self.centerAngle = centerAngle
         self.angularSpan = angularSpan
@@ -64,32 +64,111 @@ public struct OrganicPetalShape: Shape {
         let startAngle = centerAngle - angularSpan / 2.0
         let endAngle = centerAngle + angularSpan / 2.0
 
-        let p1 = CGPoint(
-            x: center.x + innerRadius * CGFloat(cos(startAngle)),
-            y: center.y + innerRadius * CGFloat(sin(startAngle))
+        let r = cornerRadius
+        let Ro = outerRadius
+        let Ri = innerRadius
+
+        // Exact analytical corner angle offsets
+        let deltaOuter = asin(Double(r / (Ro - r)))
+        let thetaOuterStart = startAngle + deltaOuter
+        let thetaOuterEnd = endAngle - deltaOuter
+
+        let deltaInner = asin(Double(r / (Ri + r)))
+        let thetaInnerStart = startAngle + deltaInner
+        let thetaInnerEnd = endAngle - deltaInner
+
+        // 1. Move to start of outer circular arc
+        let pOuterStart = CGPoint(
+            x: center.x + Ro * CGFloat(cos(thetaOuterStart)),
+            y: center.y + Ro * CGFloat(sin(thetaOuterStart))
         )
-        let p2 = CGPoint(
-            x: center.x + outerRadius * CGFloat(cos(startAngle)),
-            y: center.y + outerRadius * CGFloat(sin(startAngle))
-        )
-        let p3 = CGPoint(
-            x: center.x + outerRadius * CGFloat(cos(endAngle)),
-            y: center.y + outerRadius * CGFloat(sin(endAngle))
-        )
-        let p4 = CGPoint(
-            x: center.x + innerRadius * CGFloat(cos(endAngle)),
-            y: center.y + innerRadius * CGFloat(sin(endAngle))
+        path.move(to: pOuterStart)
+
+        // 2. True circular arc along outerRadius (increasing angle / counter-clockwise)
+        path.addArc(
+            center: center,
+            radius: Ro,
+            startAngle: Angle(radians: thetaOuterStart),
+            endAngle: Angle(radians: thetaOuterEnd),
+            clockwise: false
         )
 
-        let midRadial1 = CGPoint(x: (p1.x + p2.x) / 2.0, y: (p1.y + p2.y) / 2.0)
+        // 3. Outer-trailing smooth corner arc around cOuterEnd
+        let cOuterEnd = CGPoint(
+            x: center.x + (Ro - r) * CGFloat(cos(thetaOuterEnd)),
+            y: center.y + (Ro - r) * CGFloat(sin(thetaOuterEnd))
+        )
+        path.addArc(
+            center: cOuterEnd,
+            radius: r,
+            startAngle: Angle(radians: thetaOuterEnd),
+            endAngle: Angle(radians: endAngle + .pi / 2.0),
+            clockwise: false
+        )
 
-        path.move(to: midRadial1)
-        path.addArc(tangent1End: p2, tangent2End: p3, radius: cornerRadius)
-        path.addArc(tangent1End: p3, tangent2End: p4, radius: cornerRadius)
-        path.addArc(tangent1End: p4, tangent2End: p1, radius: cornerRadius)
-        path.addArc(tangent1End: p1, tangent2End: p2, radius: cornerRadius)
+        // 4. Straight line along trailing radial edge to inner-trailing corner
+        let cInnerEnd = CGPoint(
+            x: center.x + (Ri + r) * CGFloat(cos(thetaInnerEnd)),
+            y: center.y + (Ri + r) * CGFloat(sin(thetaInnerEnd))
+        )
+        let pInnerEndTangent = CGPoint(
+            x: cInnerEnd.x + r * CGFloat(cos(endAngle + .pi / 2.0)),
+            y: cInnerEnd.y + r * CGFloat(sin(endAngle + .pi / 2.0))
+        )
+        path.addLine(to: pInnerEndTangent)
+
+        // 5. Inner-trailing smooth corner arc around cInnerEnd
+        path.addArc(
+            center: cInnerEnd,
+            radius: r,
+            startAngle: Angle(radians: endAngle + .pi / 2.0),
+            endAngle: Angle(radians: thetaInnerEnd + .pi),
+            clockwise: false
+        )
+
+        // 6. True circular arc along innerRadius (decreasing angle / clockwise back to leading edge)
+        path.addArc(
+            center: center,
+            radius: Ri,
+            startAngle: Angle(radians: thetaInnerEnd),
+            endAngle: Angle(radians: thetaInnerStart),
+            clockwise: true
+        )
+
+        // 7. Inner-leading smooth corner arc around cInnerStart
+        let cInnerStart = CGPoint(
+            x: center.x + (Ri + r) * CGFloat(cos(thetaInnerStart)),
+            y: center.y + (Ri + r) * CGFloat(sin(thetaInnerStart))
+        )
+        path.addArc(
+            center: cInnerStart,
+            radius: r,
+            startAngle: Angle(radians: thetaInnerStart + .pi),
+            endAngle: Angle(radians: startAngle + 3.0 * .pi / 2.0),
+            clockwise: false
+        )
+
+        // 8. Straight line along leading radial edge to outer-leading corner
+        let cOuterStart = CGPoint(
+            x: center.x + (Ro - r) * CGFloat(cos(thetaOuterStart)),
+            y: center.y + (Ro - r) * CGFloat(sin(thetaOuterStart))
+        )
+        let pOuterStartTangent = CGPoint(
+            x: cOuterStart.x + r * CGFloat(cos(startAngle + 3.0 * .pi / 2.0)),
+            y: cOuterStart.y + r * CGFloat(sin(startAngle + 3.0 * .pi / 2.0))
+        )
+        path.addLine(to: pOuterStartTangent)
+
+        // 9. Outer-leading smooth corner arc around cOuterStart back to pOuterStart
+        path.addArc(
+            center: cOuterStart,
+            radius: r,
+            startAngle: Angle(radians: startAngle + 3.0 * .pi / 2.0),
+            endAngle: Angle(radians: thetaOuterStart),
+            clockwise: false
+        )
+
         path.closeSubpath()
-
         return path
     }
 }
@@ -150,9 +229,10 @@ public struct LiquidGlassWheelView: View {
 
                 // MARK: 2. Floating Liquid Glass Petals (NO background circle!)
                 if count > 0 {
+                    // Fixed 8-option circular petal shape: exactly (2*pi / 8) - gap
+                    // This shape is SHARED by all petals and NEVER changes when the number of formats changes!
+                    let fixedPetalSpan: Double = (2.0 * .pi / 8.0) - 0.046
                     let sliceAngle = (2.0 * .pi) / Double(count)
-                    let gapAngle: Double = 0.046 // ~2.6 deg gap between petals
-                    let angularSpan = sliceAngle - gapAngle
 
                     ForEach(0..<count, id: \.self) { index in
                         let format = formats[index]
@@ -162,7 +242,7 @@ public struct LiquidGlassWheelView: View {
                         liquidPetalView(
                             format: format,
                             centerAngle: centerAngle,
-                            angularSpan: angularSpan,
+                            angularSpan: fixedPetalSpan,
                             isHovered: isHovered,
                             isDimmed: (isConverting || isSuccess)
                         )
@@ -204,12 +284,12 @@ public struct LiquidGlassWheelView: View {
         let labelX = (canvasSize / 2.0) + labelRadius * CGFloat(cos(centerAngle))
         let labelY = (canvasSize / 2.0) + labelRadius * CGFloat(sin(centerAngle))
 
-        let shape = OrganicPetalShape(
+        let shape = CircularPetalShape(
             centerAngle: centerAngle,
             angularSpan: angularSpan,
             innerRadius: innerRadius,
             outerRadius: outerRadius, // FIXED geometry, NO popup!
-            cornerRadius: 15
+            cornerRadius: 13
         )
 
         ZStack {
